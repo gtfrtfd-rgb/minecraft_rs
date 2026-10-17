@@ -19,18 +19,29 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new_flat() -> Self {
+    // Генерация рельефа с холмами
+    pub fn new_terrain(chunk_x: i32, chunk_z: i32) -> Self {
         let mut blocks = [[[Block::Air; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE];
 
-        for y in 0..CHUNK_SIZE {
-            for x in 0..CHUNK_SIZE {
-                for z in 0..CHUNK_SIZE {
-                    blocks[y][x][z] = match y {
-                        0 => Block::Stone,
-                        1..=4 => Block::Dirt,
-                        5 => Block::Grass,
-                        _ => Block::Air,
-                    };
+        for x in 0..CHUNK_SIZE {
+            for z in 0..CHUNK_SIZE {
+                let wx = chunk_x * CHUNK_SIZE as i32 + x as i32;
+                let wz = chunk_z * CHUNK_SIZE as i32 + z as i32;
+
+                // Формула холмов на основе синуса/косинуса
+                let height_f = 8.0 + 4.0 * ((wx as f32 * 0.2).sin() + (wz as f32 * 0.2).cos());
+                let height = height_f.max(1.0).min((CHUNK_SIZE - 2) as f32) as usize;
+
+                for y in 0..CHUNK_SIZE {
+                    if y < height {
+                        blocks[y][x][z] = if y == height - 1 {
+                            Block::Grass
+                        } else if y > height.saturating_sub(4) {
+                            Block::Dirt
+                        } else {
+                            Block::Stone
+                        };
+                    }
                 }
             }
         }

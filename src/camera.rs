@@ -6,6 +6,8 @@ pub struct Movement {
     pub backward: bool,
     pub left: bool,
     pub right: bool,
+    pub up: bool,
+    pub down: bool,
 }
 
 pub struct Camera {
@@ -35,23 +37,28 @@ impl Camera {
         self.position
     }
 
+    // Вращение камеры мышью
+    pub fn rotate(&mut self, dx: f32, dy: f32) {
+        let sensitivity = 0.002;
+        self.yaw += dx * sensitivity;
+        self.pitch -= dy * sensitivity;
+
+        // Ограничиваем наклон вверх/вниз, чтобы не переворачивалось
+        let max_pitch = 89.0_f32.to_radians();
+        self.pitch = self.pitch.clamp(-max_pitch, max_pitch);
+    }
+
     pub fn update(&mut self, dt: f32) {
-        let speed = 8.0 * dt;
+        let speed = 16.0 * dt; // Ускорили движение для полёта
         let forward = self.forward_vector();
         let right = forward.cross(Vec3::Y).normalize();
 
-        if self.movement.forward {
-            self.position += forward * speed;
-        }
-        if self.movement.backward {
-            self.position -= forward * speed;
-        }
-        if self.movement.left {
-            self.position -= right * speed;
-        }
-        if self.movement.right {
-            self.position += right * speed;
-        }
+        if self.movement.forward { self.position += forward * speed; }
+        if self.movement.backward { self.position -= forward * speed; }
+        if self.movement.left { self.position -= right * speed; }
+        if self.movement.right { self.position += right * speed; }
+        if self.movement.up { self.position += Vec3::Y * speed; }
+        if self.movement.down { self.position -= Vec3::Y * speed; }
     }
 
     fn forward_vector(&self) -> Vec3 {

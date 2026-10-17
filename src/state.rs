@@ -20,9 +20,9 @@ impl State {
 
         let renderer = Renderer::new(window.clone(), size).await;
 
-        // Понизили камеру с y=64 до y=20, чтобы она смотрела на блоки
+        // Камера парит над миром
         let camera = Camera::new(
-            glam::Vec3::new(32.0, 20.0, 32.0),
+            glam::Vec3::new(32.0, 30.0, 32.0),
             size.width as f32 / size.height as f32,
         );
 
@@ -63,6 +63,12 @@ impl State {
                 winit::keyboard::PhysicalKey::Code(KeyCode::KeyD) => {
                     self.camera.movement.right = true;
                 }
+                winit::keyboard::PhysicalKey::Code(KeyCode::Space) => {
+                    self.camera.movement.up = true;
+                }
+                winit::keyboard::PhysicalKey::Code(KeyCode::ShiftLeft) => {
+                    self.camera.movement.down = true;
+                }
                 _ => {}
             }
         } else {
@@ -79,9 +85,19 @@ impl State {
                 winit::keyboard::PhysicalKey::Code(KeyCode::KeyD) => {
                     self.camera.movement.right = false;
                 }
+                winit::keyboard::PhysicalKey::Code(KeyCode::Space) => {
+                    self.camera.movement.up = false;
+                }
+                winit::keyboard::PhysicalKey::Code(KeyCode::ShiftLeft) => {
+                    self.camera.movement.down = false;
+                }
                 _ => {}
             }
         }
+    }
+
+    pub fn handle_mouse_motion(&mut self, dx: f32, dy: f32) {
+        self.camera.rotate(dx, dy);
     }
 
     pub fn update(&mut self) {

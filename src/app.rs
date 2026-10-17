@@ -1,6 +1,6 @@
 use crate::state::State;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
@@ -17,7 +17,6 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
-            // Добавлено разрешение 720p (1280x720)
             let window = event_loop
                 .create_window(
                     winit::window::Window::default_attributes()
@@ -25,6 +24,12 @@ impl ApplicationHandler for App {
                         .with_inner_size(winit::dpi::LogicalSize::new(1280, 720)),
                 )
                 .expect("Не удалось создать окно");
+
+            // Прячем и захватываем курсор для обзора
+            window.set_cursor_visible(false);
+            if let Err(e) = window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+                log::warn!("Не удалось захватить курсор: {e:?}");
+            }
 
             self.state = Some(pollster::block_on(State::new(window)));
         }
@@ -51,6 +56,21 @@ impl ApplicationHandler for App {
                 state.render();
             }
             _ => {}
+        }
+    }
+
+    // Обработка движения мыши
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+        if let DeviceEvent::MouseMotion { delta } = event {
+            state.handle_mouse_motion(delta.0 as f32, delta.1 as f32);
         }
     }
 
