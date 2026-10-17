@@ -17,10 +17,12 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
+            // Добавлено разрешение 720p (1280x720)
             let window = event_loop
                 .create_window(
                     winit::window::Window::default_attributes()
-                        .with_title("Minecraft Rust — wgpu Vulkan"),
+                        .with_title("Minecraft Rust — wgpu Vulkan")
+                        .with_inner_size(winit::dpi::LogicalSize::new(1280, 720)),
                 )
                 .expect("Не удалось создать окно");
 

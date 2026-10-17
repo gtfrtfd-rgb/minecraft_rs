@@ -20,8 +20,9 @@ impl State {
 
         let renderer = Renderer::new(window.clone(), size).await;
 
+        // Понизили камеру с y=64 до y=20, чтобы она смотрела на блоки
         let camera = Camera::new(
-            glam::Vec3::new(32.0, 64.0, 32.0),
+            glam::Vec3::new(32.0, 20.0, 32.0),
             size.width as f32 / size.height as f32,
         );
 

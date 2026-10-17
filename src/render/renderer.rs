@@ -1,4 +1,4 @@
-use super::{pipeline, Vertex};
+use super::{pipeline, CameraUniform, Vertex};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -12,6 +12,11 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     vertex_count: u32,
+    // Новые поля для камеры и глубины
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+    depth_texture_view: wgpu::TextureView,
 }
 
 impl Renderer {
@@ -67,19 +72,54 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
+        // --- Инициализация камеры ---
+        let camera_uniform = CameraUniform::new();
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Bind Group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+        // ---------------------------
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Voxel Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/shader.wgsl").into()),
         });
 
-        let pipeline = pipeline::create_pipeline(&device, &config, &shader);
+        let pipeline = pipeline::create_pipeline(&device, &config, &shader, &camera_bind_group_layout);
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Voxel Vertex Buffer"),
-            size: 1024 * 1024,
+            size: 1024 * 1024 * 10, // Увеличили размер под все грани
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+
+        let (_, depth_texture_view) = Self::create_depth_texture(&device, &config);
 
         Self {
             surface,
@@ -89,24 +129,54 @@ impl Renderer {
             pipeline,
             vertex_buffer,
             vertex_count: 0,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            depth_texture_view,
         }
+    }
+
+    fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView) {
+        let size = wgpu::Extent3d {
+            width: config.width,
+            height: config.height,
+            depth_or_array_layers: 1,
+        };
+        let desc = wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        };
+        let texture = device.create_texture(&desc);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        (texture, view)
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         self.config.width = size.width.max(1);
         self.config.height = size.height.max(1);
         self.surface.configure(&self.device, &self.config);
+        // Пересоздаем текстуру глубины под новый размер окна
+        let (_, view) = Self::create_depth_texture(&self.device, &self.config);
+        self.depth_texture_view = view;
     }
 
-    pub fn render(&mut self, vertices: &[Vertex], _view_proj: glam::Mat4, _eye: &glam::Vec3) {
+    pub fn render(&mut self, vertices: &[Vertex], view_proj: glam::Mat4, _eye: &glam::Vec3) {
         if vertices.is_empty() {
             return;
         }
 
+        // Обновляем матрицу камеры
+        self.camera_uniform.update_view_proj(view_proj);
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+
         let vertex_data = bytemuck::cast_slice(vertices);
         if vertex_data.len() as u64 > self.vertex_buffer.size() {
-            // Исправление: при пересоздании буфера сохраняем COPY_DST,
-            // чтобы write_buffer работал в следующих кадрах.
             self.vertex_buffer = self.device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("Voxel Vertex Buffer"),
@@ -132,15 +202,11 @@ impl Renderer {
             }
         };
 
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -159,13 +225,22 @@ impl Renderer {
                     },
                     depth_slice: None,
                 })],
-                depth_stencil_attachment: None,
+                // Подключаем depth buffer
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
 
             render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..self.vertex_count, 0..1);
         }

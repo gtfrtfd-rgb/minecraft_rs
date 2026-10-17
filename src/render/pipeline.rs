@@ -4,11 +4,12 @@ pub fn create_pipeline(
     device: &wgpu::Device,
     config: &wgpu::SurfaceConfiguration,
     shader: &wgpu::ShaderModule,
+    camera_bind_group_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
-    // wgpu 30: push_constant_ranges переименовано в immediate_size.
+    // wgpu 30: bind_group_layouts ожидает срез опциональных ссылок &[Option<&BindGroupLayout>]
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Voxel Pipeline Layout"),
-        bind_group_layouts: &[],
+        bind_group_layouts: &[Some(camera_bind_group_layout)],
         immediate_size: 0,
     });
 
@@ -40,9 +41,15 @@ pub fn create_pipeline(
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: None,
+        // wgpu 30: поля depth_write_enabled и depth_compare теперь Option
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState::default(),
-        // wgpu 30: multiview переименовано в multiview_mask.
         multiview_mask: None,
         cache: None,
     })
