@@ -20,12 +20,16 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    const INITIAL_VERTEX_BUFFER_SIZE: u64 = 1024 * 1024; // 1 MB
+
     pub async fn new(window: Arc<Window>, size: PhysicalSize<u32>) -> Self {
         let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle();
         instance_desc.backends = wgpu::Backends::VULKAN;
         let instance = wgpu::Instance::new(instance_desc);
 
-        let surface = instance.create_surface(window.clone()).expect("Не удалось создать surface");
+        let surface = instance
+            .create_surface(window.clone())
+            .expect("Не удалось создать surface");
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -50,7 +54,12 @@ impl Renderer {
             .expect("Не удалось создать device");
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -72,19 +81,20 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Camera Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Camera Bind Group"),
@@ -95,27 +105,32 @@ impl Renderer {
             }],
         });
 
-        // Создание текстуры с шумом для эффекта "пикселей"
+        // Процедурный атлас (трава/земля/камень).
         let mut pixels = vec![0u8; 64 * 64 * 4];
         for y in 0..16 {
             for x in 0..16 {
                 let i = (y * 64 + x) * 4;
                 let noise = ((x * 3 + y * 7) % 30) as u8;
-                pixels[i..i + 4].copy_from_slice(&[80 + noise, 160 + noise, 80, 255]); // Трава
+                pixels[i..i + 4].copy_from_slice(&[80 + noise, 160 + noise, 80, 255]);
             }
             for x in 16..32 {
                 let i = (y * 64 + x) * 4;
                 let noise = ((x * 5 + y * 2) % 40) as u8;
-                pixels[i..i + 4].copy_from_slice(&[130 + noise, 80 + noise, 40, 255]); // Земля
+                pixels[i..i + 4].copy_from_slice(&[130 + noise, 80 + noise, 40, 255]);
             }
             for x in 32..48 {
                 let i = (y * 64 + x) * 4;
                 let noise = ((x * 9 + y * 3) % 20) as u8;
-                pixels[i..i + 4].copy_from_slice(&[100 + noise, 100 + noise, 100 + noise, 255]); // Камень
+                pixels[i..i + 4]
+                    .copy_from_slice(&[100 + noise, 100 + noise, 100 + noise, 255]);
             }
         }
 
-        let texture_size = wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 };
+        let texture_size = wgpu::Extent3d {
+            width: 64,
+            height: 64,
+            depth_or_array_layers: 1,
+        };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Atlas"),
             size: texture_size,
@@ -154,34 +169,43 @@ impl Renderer {
             ..Default::default()
         });
 
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Texture Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(
+                            wgpu::SamplerBindingType::Filtering,
+                        ),
+                        count: None,
+                    },
+                ],
+            });
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Texture Bind Group"),
             layout: &texture_bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&texture_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         });
 
@@ -200,7 +224,7 @@ impl Renderer {
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Voxel Vertex Buffer"),
-            size: 1024 * 1024 * 10,
+            size: Self::INITIAL_VERTEX_BUFFER_SIZE,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -223,8 +247,15 @@ impl Renderer {
         }
     }
 
-    fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView) {
-        let size = wgpu::Extent3d { width: config.width, height: config.height, depth_or_array_layers: 1 };
+    fn create_depth_texture(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+    ) -> (wgpu::Texture, wgpu::TextureView) {
+        let size = wgpu::Extent3d {
+            width: config.width,
+            height: config.height,
+            depth_or_array_layers: 1,
+        };
         let desc = wgpu::TextureDescriptor {
             label: Some("Depth Texture"),
             size,
@@ -248,28 +279,37 @@ impl Renderer {
         self.depth_texture_view = view;
     }
 
-    pub fn render(&mut self, vertices: &[Vertex], view_proj: glam::Mat4, _eye: &glam::Vec3) {
-        if vertices.is_empty() { return; }
+    pub fn render(&mut self, vertices: &[Vertex], view_proj: glam::Mat4) {
+        if vertices.is_empty() {
+            return;
+        }
 
         self.camera_uniform.update_view_proj(view_proj);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
 
         let vertex_data = bytemuck::cast_slice(vertices);
-        if vertex_data.len() as u64 > self.vertex_buffer.size() {
-            self.vertex_buffer = self.device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Voxel Vertex Buffer"),
-                    contents: vertex_data,
-                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                },
-            );
-        } else {
-            self.queue.write_buffer(&self.vertex_buffer, 0, vertex_data);
+        let required = vertex_data.len() as u64;
+
+        if required > self.vertex_buffer.size() {
+            let new_size = required.next_power_of_two().max(1024);
+            self.vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Voxel Vertex Buffer"),
+                size: new_size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            log::debug!("Resized vertex buffer to {} bytes", new_size);
         }
+        self.queue.write_buffer(&self.vertex_buffer, 0, vertex_data);
         self.vertex_count = vertices.len() as u32;
 
         let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.config);
                 return;
@@ -280,8 +320,14 @@ impl Renderer {
             }
         };
 
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -290,14 +336,22 @@ impl Renderer {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.45, g: 0.7, b: 1.0, a: 1.0 }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.45,
+                            g: 0.7,
+                            b: 1.0,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture_view,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: None,

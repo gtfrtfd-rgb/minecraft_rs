@@ -12,6 +12,17 @@ glam = "0.29"
 log = "0.4"
 env_logger = "0.11"
 
+# Настройки для обычной сборки (cargo run)
+[profile.dev]
+opt-level = 1  # Ваш код компилируется быстро
+
+# Оптимизируем только зависимости (wgpu, winit и т.д.), чтобы игра летала
+[profile.dev.package."*"]
+opt-level = 3
+
+# Настройки для релизной сборки (cargo run --release)
 [profile.release]
 opt-level = 3
-lto = true
+# Заменили lto = true на "thin". Это дает почти такой же FPS, 
+# но собирается в разы быстрее.
+lto = "thin"

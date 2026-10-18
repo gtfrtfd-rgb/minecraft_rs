@@ -1,0 +1,4 @@
+[target.x86_64-pc-windows-msvc]
+# Используем встроенный в Rust LLVM-линкер (rust-lld). 
+# Он работает в 5-10 раз быстрее стандартного линкера от Microsoft (link.exe).
+linker = "rust-lld.exe"
